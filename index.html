@@ -3,14 +3,14 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>בקר חימום – ניסוי</title>
+<title>בקר חימום</title>
 <meta name="theme-color" content="#0e1a2b">
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="icon" href="icons/icon-192.png">
 <link rel="apple-touch-icon" href="icons/icon-192.png">
 <style>
-/* Layout: one-column phone screen — status bar, the LED control as the hero,
-   two readings, connect button, collapsible message log. */
+/* Layout: phone app — fixed top bar (connection), one scrolling view at a time,
+   fixed bottom tab bar. Monitor view leads with the live temperature, then chart. */
 :root{
   --bg:#f3f5f8;
   --surface:#ffffff;
@@ -18,12 +18,14 @@
   --border:#d3dbe5;
   --fg:#14202f;
   --fg-muted:#5a6779;
-  --accent:#d9642b;          /* heater orange */
-  --led:#e5322d;             /* the board's red LED */
+  --accent:#d9642b;          /* heater orange: actions, temperature line */
+  --target:#2f6fcf;          /* set point line */
   --ok:#1f8a4c;
   --warn:#b7791f;
+  --danger:#c93a32;
   --font:'Heebo', system-ui, -apple-system, 'Segoe UI', Arial, sans-serif;
   --mono: ui-monospace, 'SFMono-Regular', Menlo, Consolas, monospace;
+  --tabs-h:64px;
 }
 @media (prefers-color-scheme: dark){
   :root{
@@ -34,14 +36,15 @@
     --fg:#e8eef6;
     --fg-muted:#9cadc3;
     --accent:#f08a4b;
-    --led:#ff4b45;
+    --target:#6ea4f2;
     --ok:#4cc982;
     --warn:#e2b04a;
+    --danger:#ff6b61;
     color-scheme:dark;
   }
 }
 *{box-sizing:border-box;}
-html,body{margin:0;height:100%;}
+html,body{margin:0;min-height:100%;}
 body{
   background:var(--bg);
   color:var(--fg);
@@ -49,214 +52,393 @@ body{
   font-size:16px;
   -webkit-tap-highlight-color:transparent;
 }
-.app{
-  max-width:480px;
-  margin:0 auto;
-  min-height:100%;
-  display:flex;
-  flex-direction:column;
-  gap:16px;
-  padding-block:max(16px, env(safe-area-inset-top)) max(20px, env(safe-area-inset-bottom));
+button,input{font-family:var(--font);}
+[hidden]{display:none !important;}
+
+/* ---------- top bar ---------- */
+.top{
+  position:sticky;
+  top:0;
+  z-index:5;
+  background:var(--bg);
+  padding-top:max(10px, env(safe-area-inset-top));
+  padding-bottom:10px;
   padding-left:max(16px, env(safe-area-inset-left));
   padding-right:max(16px, env(safe-area-inset-right));
+  border-bottom:1px solid var(--border);
 }
-header{
-  display:flex;
-  align-items:center;
-  justify-content:space-between;
-  gap:12px;
-}
-h1{
-  font-size:20px;
-  font-weight:700;
-  margin:0;
-  letter-spacing:-.01em;
-}
-.sub{font-size:13px;color:var(--fg-muted);margin-top:2px;}
+.top-inner{max-width:560px;margin:0 auto;display:flex;align-items:center;gap:10px;}
+.top h1{font-size:18px;font-weight:700;margin:0;}
+.top .sub{font-size:12px;color:var(--fg-muted);}
+.top .grow{flex:1;min-width:0;}
 .chip{
-  display:inline-flex;
-  align-items:center;
-  gap:7px;
-  padding:6px 11px;
-  border-radius:999px;
-  background:var(--surface-2);
-  font-size:13px;
-  font-weight:500;
-  white-space:nowrap;
+  display:inline-flex;align-items:center;gap:6px;
+  padding:5px 10px;border-radius:999px;
+  background:var(--surface-2);font-size:13px;font-weight:500;white-space:nowrap;
 }
-.chip .dot{width:9px;height:9px;border-radius:50%;background:var(--fg-muted);}
+.chip .dot{width:8px;height:8px;border-radius:50%;background:var(--fg-muted);}
 .chip[data-state="connected"] .dot{background:var(--ok);}
 .chip[data-state="connecting"] .dot{background:var(--warn);animation:pulse 1s infinite;}
 @keyframes pulse{50%{opacity:.25}}
-
-.banner{
-  border-radius:12px;
-  padding:12px 14px;
-  font-size:14px;
-  line-height:1.5;
-  background:var(--surface);
-  border:1px solid var(--border);
-  border-inline-start:4px solid var(--warn);
+.linkbtn{
+  border:none;background:none;color:var(--accent);font-weight:600;font-size:14px;
+  padding:8px 4px;cursor:pointer;
 }
 
-.hero{
+/* ---------- views ---------- */
+main{
+  max-width:560px;
+  margin:0 auto;
+  padding-top:16px;
+  padding-bottom:calc(var(--tabs-h) + 24px + env(safe-area-inset-bottom));
+  padding-left:max(16px, env(safe-area-inset-left));
+  padding-right:max(16px, env(safe-area-inset-right));
+}
+.view{display:flex;flex-direction:column;gap:14px;}
+h2{font-size:20px;margin:2px 0 0;}
+.intro{font-size:14px;color:var(--fg-muted);line-height:1.55;margin:0;}
+.card{
   background:var(--surface);
   border:1px solid var(--border);
-  border-radius:20px;
-  padding:26px 20px 22px;
-  display:flex;
-  flex-direction:column;
-  align-items:center;
-  gap:14px;
-}
-.hero-label{font-size:14px;color:var(--fg-muted);}
-.ledbtn{
-  width:168px;height:168px;
-  border-radius:50%;
-  border:none;
-  cursor:pointer;
-  background:var(--surface-2);
-  color:var(--fg);
-  font-family:var(--font);
-  font-size:20px;
-  font-weight:700;
-  display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;
-  box-shadow:inset 0 0 0 2px var(--border);
-  transition:background .25s, box-shadow .25s, transform .1s;
-}
-.ledbtn small{font-size:13px;font-weight:400;color:var(--fg-muted);}
-.ledbtn:active{transform:scale(.97);}
-.ledbtn[data-on="1"]{
-  background:var(--led);
-  color:#fff;
-  box-shadow:0 0 0 6px color-mix(in srgb, var(--led) 25%, transparent), 0 0 42px color-mix(in srgb, var(--led) 55%, transparent);
-}
-.ledbtn[data-on="1"] small{color:rgba(255,255,255,.85);}
-.ledbtn:disabled{cursor:default;opacity:.45;box-shadow:inset 0 0 0 2px var(--border);}
-.ledbtn[data-pending="1"]{opacity:.7;}
-.ledbtn:focus-visible,.btn:focus-visible,summary:focus-visible{outline:3px solid var(--accent);outline-offset:3px;}
-.hint{font-size:13px;color:var(--fg-muted);text-align:center;min-height:1.4em;}
-.hint.err{color:var(--led);}
-
-.readings{
-  display:grid;
-  grid-template-columns:1fr 1fr;
-  gap:12px;
-}
-.reading{
-  background:var(--surface);
-  border:1px solid var(--border);
-  border-radius:14px;
-  padding:14px 16px;
+  border-radius:16px;
+  padding:16px;
   min-width:0;
 }
-.reading .k{font-size:13px;color:var(--fg-muted);}
-.reading .v{
-  font-size:26px;
-  font-weight:700;
-  margin-top:4px;
-  font-variant-numeric:tabular-nums;
-  direction:ltr;
-  text-align:right;
-}
-.reading .v small{font-size:14px;font-weight:500;color:var(--fg-muted);}
-.reading .note{font-size:12px;color:var(--fg-muted);margin-top:2px;}
-.stale .v{opacity:.45;}
+.card h3{font-size:15px;margin:0 0 10px;}
+.muted{color:var(--fg-muted);}
+.small{font-size:13px;}
+.msg{font-size:14px;min-height:1.3em;line-height:1.45;}
+.msg.ok{color:var(--ok);}
+.msg.err{color:var(--danger);}
 
+.banner{
+  border-radius:12px;padding:12px 14px;font-size:14px;line-height:1.5;
+  background:var(--surface);border:1px solid var(--border);
+  border-inline-start:4px solid var(--warn);
+}
+.banner.danger{border-inline-start-color:var(--danger);}
+.banner .btn{margin-top:10px;}
+
+/* ---------- buttons ---------- */
 .btn{
-  appearance:none;
-  border:none;
-  border-radius:14px;
-  padding:15px 18px;
-  font-family:var(--font);
-  font-size:17px;
-  font-weight:600;
-  cursor:pointer;
-  width:100%;
+  appearance:none;border:none;border-radius:12px;
+  padding:13px 16px;font-size:16px;font-weight:600;cursor:pointer;width:100%;
 }
 .btn.primary{background:var(--accent);color:#fff;}
 .btn.secondary{background:var(--surface-2);color:var(--fg);}
-.btn:disabled{opacity:.5;cursor:default;}
+.btn.danger{background:var(--danger);color:#fff;}
+.btn:disabled{opacity:.45;cursor:default;}
+.row{display:flex;gap:10px;}
+.row > *{flex:1;min-width:0;}
+button:focus-visible,input:focus-visible{outline:3px solid var(--accent);outline-offset:2px;}
 
-details{
-  background:var(--surface);
-  border:1px solid var(--border);
-  border-radius:14px;
-  padding:4px 14px;
+/* ---------- monitor ---------- */
+.now{display:grid;grid-template-columns:auto 1fr;gap:6px 18px;align-items:center;}
+.bigtemp{
+  font-size:56px;font-weight:700;line-height:1;
+  font-variant-numeric:tabular-nums;direction:ltr;
 }
-summary{
-  cursor:pointer;
-  padding:10px 0;
-  font-size:14px;
-  color:var(--fg-muted);
+.bigtemp small{font-size:24px;font-weight:500;color:var(--fg-muted);}
+.now .facts{display:flex;flex-direction:column;gap:4px;font-size:14px;}
+.now .facts b{font-variant-numeric:tabular-nums;}
+.meter{grid-column:1 / -1;margin-top:10px;}
+.meter .bar{height:8px;border-radius:99px;background:var(--surface-2);overflow:hidden;}
+.meter .fill{height:100%;width:0;background:var(--accent);border-radius:99px;transition:width .4s;}
+.meter .lbl{display:flex;justify-content:space-between;font-size:12px;color:var(--fg-muted);margin-top:5px;}
+.pill{display:inline-block;font-size:12px;padding:3px 8px;border-radius:99px;background:var(--surface-2);color:var(--fg-muted);}
+
+.seg{display:flex;background:var(--surface-2);border-radius:10px;padding:3px;gap:2px;}
+.seg button{
+  flex:1;border:none;background:none;border-radius:8px;padding:6px 4px;
+  font-size:13px;color:var(--fg-muted);cursor:pointer;white-space:nowrap;
 }
-#log{
-  direction:ltr;
-  text-align:left;
-  font-family:var(--mono);
+.seg button[aria-pressed="true"]{background:var(--surface);color:var(--fg);font-weight:600;box-shadow:0 1px 2px rgba(0,0,0,.08);}
+.chart-head{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;margin-bottom:10px;}
+.chart-head .seg{flex:1 1 230px;}
+.chart-head h3{margin:0;}
+.chartbox{position:relative;}
+canvas{display:block;width:100%;height:220px;}
+.chart-empty{
+  position:absolute;inset:0;display:flex;align-items:center;justify-content:center;
+  font-size:14px;color:var(--fg-muted);text-align:center;padding:0 20px;
+}
+.legend{display:flex;gap:16px;font-size:12px;color:var(--fg-muted);margin-top:8px;}
+.legend span::before{
+  content:"";display:inline-block;width:16px;height:0;border-top:3px solid var(--accent);
+  vertical-align:middle;margin-inline-end:6px;
+}
+.legend span.tgt::before{border-top:2px dashed var(--target);}
+
+/* ---------- steppers ---------- */
+.stepper{display:flex;align-items:center;justify-content:center;gap:18px;direction:ltr;}
+.stepper button{
+  width:52px;height:52px;border-radius:50%;border:none;cursor:pointer;
+  background:var(--surface-2);color:var(--fg);font-size:26px;line-height:1;
+}
+.stepper button:disabled{opacity:.35;cursor:default;}
+.stepper .val{
+  font-size:44px;font-weight:700;min-width:150px;text-align:center;
+  font-variant-numeric:tabular-nums;direction:ltr;
+}
+.stepper.small .val{font-size:26px;min-width:86px;}
+.stepper.small button{width:40px;height:40px;font-size:20px;}
+input[type="range"]{width:100%;accent-color:var(--accent);margin:14px 0 2px;direction:ltr;}
+.range-lbl{display:flex;justify-content:space-between;font-size:12px;color:var(--fg-muted);direction:ltr;}
+
+/* ---------- profile ---------- */
+.steps{display:flex;flex-direction:column;gap:10px;}
+.step{
+  background:var(--surface);border:1px solid var(--border);border-radius:14px;
+  padding:12px 14px;display:flex;flex-direction:column;gap:10px;
+}
+.step-head{display:flex;align-items:center;justify-content:space-between;gap:8px;}
+.step-head b{font-size:15px;}
+.icons{display:flex;gap:4px;}
+.icons button{
+  width:36px;height:36px;border-radius:10px;border:none;cursor:pointer;
+  background:var(--surface-2);color:var(--fg);font-size:16px;
+}
+.icons button:disabled{opacity:.3;cursor:default;}
+.step-body{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;}
+.dur{display:flex;align-items:center;gap:6px;font-size:14px;color:var(--fg-muted);}
+.dur input{
+  width:58px;padding:9px 6px;border-radius:10px;border:1px solid var(--border);
+  background:var(--bg);color:var(--fg);font-size:17px;text-align:center;
+  font-variant-numeric:tabular-nums;
+}
+.preview svg{display:block;width:100%;height:auto;}
+.errs{margin:0;padding-inline-start:18px;color:var(--danger);font-size:14px;line-height:1.5;}
+
+/* ---------- settings ---------- */
+.field{display:flex;flex-direction:column;gap:6px;margin-bottom:12px;}
+.field label{font-size:14px;color:var(--fg-muted);}
+.field input{
+  padding:12px;border-radius:12px;border:1px solid var(--border);
+  background:var(--bg);color:var(--fg);font-size:18px;letter-spacing:.15em;direction:ltr;text-align:center;
+}
+.kv{display:flex;justify-content:space-between;font-size:14px;padding:6px 0;border-bottom:1px solid var(--border);}
+.kv:last-child{border-bottom:none;}
+.kv b{font-variant-numeric:tabular-nums;}
+
+/* ---------- bottom tabs ---------- */
+.tabs{
+  position:fixed;bottom:0;left:0;right:0;z-index:5;
+  background:var(--surface);border-top:1px solid var(--border);
+  padding-bottom:env(safe-area-inset-bottom);
+  padding-left:env(safe-area-inset-left);padding-right:env(safe-area-inset-right);
+}
+.tabs-inner{max-width:560px;margin:0 auto;display:grid;grid-template-columns:repeat(4,1fr);height:var(--tabs-h);}
+.tabs button{
+  border:none;background:none;cursor:pointer;color:var(--fg-muted);
+  display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;
   font-size:12px;
-  line-height:1.5;
-  max-height:220px;
-  overflow:auto;
-  white-space:pre-wrap;
-  word-break:break-all;
-  margin:0 0 10px;
-  color:var(--fg-muted);
 }
-.footer{font-size:12px;color:var(--fg-muted);text-align:center;margin-top:auto;}
-@media (prefers-reduced-motion: reduce){
-  *{animation:none !important;transition:none !important;}
+.tabs svg{width:24px;height:24px;stroke:currentColor;fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round;}
+.tabs button[aria-selected="true"]{color:var(--accent);font-weight:600;}
+
+.toast{
+  position:fixed;z-index:6;left:16px;right:16px;
+  bottom:calc(var(--tabs-h) + 14px + env(safe-area-inset-bottom));
+  max-width:528px;margin:0 auto;
+  background:var(--fg);color:var(--bg);
+  border-radius:12px;padding:12px 14px;font-size:14px;line-height:1.45;
+  box-shadow:0 6px 20px rgba(0,0,0,.25);
 }
+@media (prefers-reduced-motion: reduce){ *{animation:none !important;transition:none !important;} }
 </style>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Heebo:wght@400;500;700&display=swap">
 </head>
 <body>
-<main class="app">
-  <header>
-    <div>
-      <h1>בקר חימום · ניסוי</h1>
-      <div class="sub" id="deviceName">לא מחובר לבקר</div>
+
+<header class="top">
+  <div class="top-inner">
+    <div class="grow">
+      <h1>בקר חימום</h1>
+      <div class="sub" id="deviceName">לא מחובר</div>
     </div>
     <span class="chip" id="chip" data-state="disconnected" role="status" aria-live="polite"><span class="dot"></span><span id="chipText">מנותק</span></span>
-  </header>
-
-  <div class="banner" id="unsupported" hidden>
-    הדפדפן הזה לא תומך בבלוטות'. פתחו את האפליקציה בדפדפן <b>Chrome</b> בטלפון אנדרואיד.
+    <button class="linkbtn" id="connBtn">התחבר</button>
   </div>
+</header>
 
-  <section class="hero" aria-label="שליטה בנורית">
-    <div class="hero-label">הנורית האדומה על הלוח</div>
-    <button class="ledbtn" id="ledBtn" data-on="0" disabled>
-      <span id="ledBtnText">הדלק</span>
-      <small id="ledBtnState">מצב לא ידוע</small>
-    </button>
-    <div class="hint" id="hint">התחברו לבקר כדי לשלוט בנורית</div>
+<main>
+
+  <!-- ============ MONITOR ============ -->
+  <section class="view" id="view-monitor">
+    <div class="card" id="connectCard">
+      <h3>התחברות לבקר</h3>
+      <p class="intro">ודאו שהבקר דלוק וקרוב לטלפון, ולחצו "התחבר לבקר".</p>
+      <div class="row" style="margin-top:14px">
+        <button class="btn primary" id="connectBig">התחבר לבקר</button>
+      </div>
+      <button class="btn secondary" id="demoBtn" style="margin-top:10px">נסו מצב הדגמה, בלי בקר</button>
+      <p class="intro small" id="noBle" hidden style="margin-top:10px">הדפדפן הזה לא תומך בבלוטות'. כדי להתחבר לבקר פתחו את האפליקציה ב-Chrome באנדרואיד. מצב ההדגמה עובד בכל דפדפן.</p>
+    </div>
+
+    <div class="banner danger" id="faultBanner" hidden>
+      <div id="faultText"></div>
+      <button class="btn secondary" id="faultRetry">הפעל חימום מחדש</button>
+    </div>
+    <div class="banner" id="simBanner" hidden>הבקר עובד במצב סימולציה: אין גוף חימום אמיתי, והטמפרטורה מחושבת. הנורית האדומה על הלוח מראה מתי "החימום" פועל.</div>
+
+    <div class="card" id="nowCard">
+      <div class="now">
+        <div class="bigtemp" id="tempNow">—</div>
+        <div class="facts">
+          <div>יעד: <b id="targetNow">—</b></div>
+          <div id="modeLine" class="muted">—</div>
+          <div class="muted small" id="batLine"></div>
+        </div>
+        <div class="meter">
+          <div class="bar"><div class="fill" id="dutyFill"></div></div>
+          <div class="lbl"><span id="dutyText">עוצמת חימום —</span><span id="runLine"></span></div>
+        </div>
+      </div>
+    </div>
+
+    <button class="btn secondary" id="runBtn" disabled>עצור חימום</button>
+
+    <div class="card">
+      <div class="chart-head">
+        <h3>מעקב טמפרטורה</h3>
+        <div class="seg" id="winSeg" role="group" aria-label="טווח זמן">
+          <button data-min="10" aria-pressed="true">10 ד'</button>
+          <button data-min="30" aria-pressed="false">30 ד'</button>
+          <button data-min="60" aria-pressed="false">שעה</button>
+          <button data-min="0" aria-pressed="false">הכול</button>
+        </div>
+      </div>
+      <div class="chartbox">
+        <canvas id="chart" aria-label="גרף טמפרטורה לאורך זמן" role="img"></canvas>
+        <div class="chart-empty" id="chartEmpty">אחרי ההתחברות תתווסף לכאן נקודה כל 5 שניות</div>
+      </div>
+      <div class="legend"><span>טמפרטורה</span><span class="tgt">יעד</span></div>
+    </div>
+
+    <div class="card">
+      <h3>מה הבקר יעשה בהפעלה הבאה</h3>
+      <div id="savedProgram" class="muted">יוצג אחרי ההתחברות</div>
+    </div>
   </section>
 
-  <section class="readings" id="readings" aria-label="נתונים מהבקר">
-    <div class="reading">
-      <div class="k">מתח סוללה</div>
-      <div class="v" id="bat">—</div>
-      <div class="note" id="batNote">&nbsp;</div>
+  <!-- ============ FIXED SET POINT ============ -->
+  <section class="view" id="view-fixed" hidden>
+    <h2>טמפרטורה קבועה</h2>
+    <p class="intro">קבעו טמפרטורה ולחצו "שמור בבקר". הבקר יזכור אותה ויחמם אליה בכל הפעלה, עד שתשמרו משהו אחר.</p>
+    <div class="card">
+      <div class="stepper">
+        <button id="spMinus" aria-label="הורד חצי מעלה">−</button>
+        <div class="val" id="spValue">39.0°</div>
+        <button id="spPlus" aria-label="העלה חצי מעלה">+</button>
+      </div>
+      <input type="range" id="spSlider" min="30" max="47" step="0.5" value="39" aria-label="טמפרטורה רצויה">
+      <div class="range-lbl"><span id="spMinLbl">30.0°</span><span id="spMaxLbl">47.0°</span></div>
     </div>
-    <div class="reading">
-      <div class="k">זמן פעולה של הבקר</div>
-      <div class="v" id="up">—</div>
-      <div class="note" id="lastSeen">&nbsp;</div>
-    </div>
+    <div class="msg muted" id="spSaved"></div>
+    <button class="btn primary" id="spSave" disabled>שמור בבקר</button>
+    <div class="msg" id="spMsg" role="status"></div>
   </section>
 
-  <button class="btn primary" id="connectBtn">התחבר לבקר</button>
-  <button class="btn secondary" id="installBtn" hidden>התקן כאפליקציה במסך הבית</button>
+  <!-- ============ PROFILE ============ -->
+  <section class="view" id="view-profile" hidden>
+    <h2>פרופיל חימום</h2>
+    <p class="intro">רשימת שלבים: כמה זמן להחזיק כל טמפרטורה. אחרי השלב האחרון הפרופיל חוזר לשלב הראשון, וכך הלאה. אחרי שמירה הבקר עוקב אחרי הפרופיל בכל הפעלה, עד שתשמרו משהו אחר.</p>
+    <div class="banner" id="profileState" hidden></div>
+    <div class="steps" id="steps"></div>
+    <button class="btn secondary" id="addStep">+ הוסף שלב</button>
+    <div class="card preview">
+      <h3>מחזור אחד</h3>
+      <div id="preview"></div>
+      <div class="muted small" id="cycleText" style="margin-top:6px"></div>
+    </div>
+    <ul class="errs" id="profileErrors" hidden></ul>
+    <button class="btn primary" id="profileSave" disabled>שמור והפעל בבקר</button>
+    <div class="row">
+      <button class="btn secondary" id="profileReset">טען מהבקר</button>
+      <button class="btn secondary" id="profileActivate" hidden>חזור לפרופיל השמור</button>
+    </div>
+    <div class="msg" id="profileMsg" role="status"></div>
+  </section>
 
-  <details>
-    <summary>יומן הודעות</summary>
-    <pre id="log" aria-live="off"></pre>
-  </details>
+  <!-- ============ SETTINGS ============ -->
+  <section class="view" id="view-settings" hidden>
+    <h2>הגדרות</h2>
 
-  <div class="footer">Feather 32u4 Bluefruit LE · שם בבלוטות': HeaterTest</div>
+    <form class="card" id="lockForm" autocomplete="off">
+      <h3>המסך מוגן בסיסמה</h3>
+      <div class="field">
+        <label for="pwdInput">סיסמה</label>
+        <input id="pwdInput" type="password" inputmode="numeric" maxlength="8" autocomplete="off">
+      </div>
+      <button class="btn primary" id="unlockBtn" type="submit" disabled>כניסה</button>
+      <div class="msg" id="lockMsg" role="status"></div>
+    </form>
+
+    <div id="settingsPanel" hidden>
+      <div class="view">
+        <div class="card">
+          <h3>טמפרטורת מקסימום</h3>
+          <p class="intro small">הבקר לא יחמם מעל הערך הזה, ולא יקבל טמפרטורה או שלב בפרופיל גבוהים ממנו. <span id="hardMaxNote"></span></p>
+          <div class="stepper small" style="margin-top:12px">
+            <button id="maxMinus" aria-label="הורד חצי מעלה">−</button>
+            <div class="val" id="maxValue">47.0°</div>
+            <button id="maxPlus" aria-label="העלה חצי מעלה">+</button>
+          </div>
+          <button class="btn primary" id="maxSave" style="margin-top:14px">שמור מקסימום</button>
+          <div class="msg" id="maxMsg" role="status"></div>
+        </div>
+
+        <form class="card" id="pwdForm" autocomplete="off">
+          <h3>החלפת סיסמה</h3>
+          <div class="field">
+            <label for="newPwd">סיסמה חדשה (4–8 ספרות)</label>
+            <input id="newPwd" type="password" inputmode="numeric" maxlength="8" autocomplete="new-password">
+          </div>
+          <div class="field">
+            <label for="newPwd2">הקלידו שוב</label>
+            <input id="newPwd2" type="password" inputmode="numeric" maxlength="8" autocomplete="new-password">
+          </div>
+          <button class="btn primary" type="submit" id="pwdSave">החלף סיסמה</button>
+          <div class="msg" id="pwdMsg" role="status"></div>
+        </form>
+
+        <button class="btn secondary" id="lockBtn">נעל הגדרות</button>
+      </div>
+    </div>
+
+    <div class="card">
+      <h3>על הבקר</h3>
+      <div class="kv"><span>שם</span><b id="infoName">—</b></div>
+      <div class="kv"><span>מקסימום שמור</span><b id="infoMax">—</b></div>
+      <div class="kv"><span>גבול קשיח בקוד הבקר</span><b id="infoHard">—</b></div>
+      <div class="kv"><span>מתח סוללה</span><b id="infoBat">—</b></div>
+    </div>
+    <button class="btn secondary" id="installBtn" hidden>התקן כאפליקציה במסך הבית</button>
+  </section>
 </main>
+
+<div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
+
+<nav class="tabs" aria-label="מסכים">
+  <div class="tabs-inner" role="tablist">
+    <button role="tab" data-view="monitor" aria-selected="true">
+      <svg viewBox="0 0 24 24"><path d="M3 17l5-6 4 4 4-7 5 9"/><path d="M3 21h18"/></svg>ניטור
+    </button>
+    <button role="tab" data-view="fixed" aria-selected="false">
+      <svg viewBox="0 0 24 24"><path d="M10 13.5V5a2 2 0 1 1 4 0v8.5a4 4 0 1 1-4 0z"/><path d="M12 9v6"/></svg>קבועה
+    </button>
+    <button role="tab" data-view="profile" aria-selected="false">
+      <svg viewBox="0 0 24 24"><path d="M3 16h4v-5h5v-4h5v6h4"/><path d="M3 20h18"/></svg>פרופיל
+    </button>
+    <button role="tab" data-view="settings" aria-selected="false">
+      <svg viewBox="0 0 24 24"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg>הגדרות
+    </button>
+  </div>
+</nav>
+
+<script src="core.js"></script>
+<script src="demo.js"></script>
 <script src="app.js"></script>
 </body>
 </html>

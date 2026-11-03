@@ -1,8 +1,8 @@
 // Offline support: try the network first so updates show up right away,
 // and fall back to the saved copy when there is no internet.
-const CACHE = 'heater-app-v1';
+const CACHE = 'heater-app-v3';
 const FILES = [
-  './', './index.html', './app.js', './manifest.webmanifest',
+  './', './index.html', './core.js', './demo.js', './app.js', './manifest.webmanifest',
   './icons/icon-192.png', './icons/icon-512.png', './icons/icon-maskable-512.png',
 ];
 
