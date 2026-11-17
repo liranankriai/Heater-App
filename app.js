@@ -155,8 +155,16 @@ function applyStatus(s) {
   drawChart();
 }
 
+// A green "saved" note is true only while that program is the one saved in the board.
+function clearOkMsg(id) {
+  const el = $(id);
+  if (el && el.classList.contains('ok')) setMsg(id, '');
+}
+
 function applyConfig(c) {
   S.config = c;
+  if (c.mode === 'P') clearOkMsg('spMsg');
+  if (c.mode === 'F') clearOkMsg('profileMsg');
   // SP/MD answers carry no profile lines: keep what we have unless the size changed
   if (S.boardProfile.length !== c.steps) S.boardProfile = new Array(c.steps).fill(null);
   if (!S.spDirty) S.spDraft = c.sp;
@@ -318,6 +326,14 @@ function renderMonitor() {
     } else mode = 'טמפרטורה קבועה';
   }
   $('modeLine').textContent = mode;
+  // badge: what the board runs now (status), or what is saved in it (config) between status lines
+  const md = live ? s.mode : (S.connected && S.config ? S.config.mode : null);
+  const tag = $('modeTag');
+  if (tag) {
+    tag.hidden = !(md === 'P' || md === 'F');
+    tag.textContent = md === 'P' ? 'פרופיל טמפרטורה' : 'טמפרטורה קבועה';
+    tag.classList.toggle('profile', md === 'P');
+  }
   $('batLine').textContent = live && typeof s.battery === 'number' ? `סוללה ${s.battery.toFixed(2)}V` : '';
   $('dutyFill').style.width = live ? `${clamp(s.duty, 0, 100)}%` : '0';
   $('dutyText').textContent = live ? `עוצמת חימום ${Math.round(s.duty)}%` : 'עוצמת חימום —';
@@ -612,6 +628,7 @@ async function saveSetPoint() {
     await busy(() => command(`SP:${toTenths(S.spDraft)}`));
     S.spDirty = false;
     setMsg('spMsg', `נשמר בבקר. מעכשיו הבקר יחמם ל-${deg(S.spDraft)} בכל הפעלה.`, 'ok');
+    clearOkMsg('profileMsg');
   } catch (e) { setMsg('spMsg', `לא נשמר: ${reasonText(e)}.`, 'err'); }
 }
 
@@ -627,6 +644,7 @@ async function saveProfile() {
     });
     S.draftDirty = false;
     setMsg('profileMsg', 'הפרופיל נשמר בבקר והופעל. מעכשיו הבקר יעקוב אחריו בכל הפעלה.', 'ok');
+    clearOkMsg('spMsg');
     renderProfile();
   } catch (e) { setMsg('profileMsg', `הפרופיל לא נשמר: ${reasonText(e)}. הבקר ממשיך עם מה שהיה שמור בו קודם.`, 'err'); }
 }
@@ -635,6 +653,7 @@ async function activateProfile() {
   try {
     await busy(() => command('MD:P'));
     setMsg('profileMsg', 'הבקר חזר לפרופיל השמור, מהשלב הראשון.', 'ok');
+    clearOkMsg('spMsg');
   } catch (e) { setMsg('profileMsg', `לא בוצע: ${reasonText(e)}.`, 'err'); }
 }
 
@@ -648,12 +667,19 @@ function reloadProfileFromBoard() {
 async function toggleRun() {
   const s = S.status;
   if (!s) return;
-  try { await busy(() => command(s.running ? 'RUN:0' : 'RUN:1')); }
-  catch (e) { toast(`לא בוצע: ${reasonText(e)}.`); }
+  const want = !s.running;
+  try {
+    await busy(() => command(want ? 'RUN:1' : 'RUN:0'));
+    // the board said OK: show the new state now, without waiting for its next status line
+    if (S.status) { S.status = { ...S.status, running: want, fault: want ? 0 : S.status.fault }; renderMonitor(); }
+  } catch (e) { toast(`לא בוצע: ${reasonText(e)}.`); }
 }
 
 async function retryAfterFault() {
-  try { await busy(() => command('RUN:1')); }
+  try {
+    await busy(() => command('RUN:1'));
+    if (S.status) { S.status = { ...S.status, running: true, fault: 0 }; renderMonitor(); }
+  }
   catch (e) { $('faultText').textContent = `${Core.FAULTS[S.status && S.status.fault] || ''} ${reasonText(e)}.`; }
 }
 

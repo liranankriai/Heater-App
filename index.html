@@ -44,7 +44,7 @@
   }
 }
 *{box-sizing:border-box;}
-html,body{margin:0;min-height:100%;}
+html,body{margin:0;min-height:100%;overscroll-behavior-y:contain;}
 body{
   background:var(--bg);
   color:var(--fg);
@@ -109,6 +109,14 @@ h2{font-size:20px;margin:2px 0 0;}
 .small{font-size:13px;}
 .msg{font-size:14px;min-height:1.3em;line-height:1.45;}
 .msg.ok{color:var(--ok);}
+.tag{
+  display:inline-flex;align-items:center;gap:6px;padding:4px 12px;border-radius:99px;
+  font-size:13px;font-weight:600;line-height:1.3;
+  background:color-mix(in srgb, var(--target) 14%, transparent);color:var(--target);
+}
+.tag::before{content:"";width:8px;height:8px;border-radius:50%;background:currentColor;}
+.tag.profile{background:color-mix(in srgb, var(--accent) 16%, transparent);color:var(--accent);}
+.cardtop{display:flex;justify-content:flex-start;margin:-2px 0 10px;}
 .msg.err{color:var(--danger);}
 
 .banner{
@@ -283,6 +291,7 @@ input[type="range"]{width:100%;accent-color:var(--accent);margin:14px 0 2px;dire
     <div class="banner" id="simBanner" hidden>הבקר עובד במצב סימולציה: אין גוף חימום אמיתי, והטמפרטורה מחושבת. הנורית האדומה על הלוח מראה מתי "החימום" פועל.</div>
 
     <div class="card" id="nowCard">
+      <div class="cardtop"><span class="tag" id="modeTag" hidden></span></div>
       <div class="now">
         <div class="bigtemp" id="tempNow">—</div>
         <div class="facts">
@@ -437,6 +446,16 @@ input[type="range"]{width:100%;accent-color:var(--accent);margin:14px 0 2px;dire
   </div>
 </nav>
 
+<script>
+// If something breaks, show the reason on screen instead of a blank page.
+window.addEventListener('error', function (e) {
+  var b = document.getElementById('errBanner');
+  if (!b) { b = document.createElement('div'); b.id = 'errBanner';
+    b.style.cssText = 'position:fixed;left:8px;right:8px;bottom:8px;z-index:9999;background:#b00020;color:#fff;padding:10px;border-radius:8px;font:13px/1.4 monospace;direction:ltr;white-space:pre-wrap';
+    document.body.appendChild(b); }
+  b.textContent = 'App error: ' + e.message + '\n' + (e.filename || '').split('/').pop() + ':' + e.lineno;
+});
+</script>
 <script src="core.js"></script>
 <script src="demo.js"></script>
 <script src="app.js"></script>
