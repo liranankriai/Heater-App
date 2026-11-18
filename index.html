@@ -329,6 +329,18 @@ input[type="range"]{width:100%;accent-color:var(--accent);margin:14px 0 2px;dire
       <h3>מה הבקר יעשה בהפעלה הבאה</h3>
       <div id="savedProgram" class="muted">יוצג אחרי ההתחברות</div>
     </div>
+
+    <div class="card" id="logCard">
+      <h3>יומן בדיקה</h3>
+      <p class="intro small">בזמן שהבקר מחובר, נשמרת בטלפון שורה כל שנייה: טמפרטורה, יעד, עוצמת חימום, כמה זמן החימום באמת פעל, ומתח הסוללה. נשמרות גם כל הפקודות.</p>
+      <p class="small" id="logInfo" style="margin:10px 0 12px"></p>
+      <button class="btn primary" id="logExport">שתף או הורד את היומן (CSV)</button>
+      <div class="row" style="margin-top:10px">
+        <button class="btn secondary" id="logPull">משוך 30 דקות מזיכרון הבקר</button>
+        <button class="btn secondary" id="logClear">נקה יומן</button>
+      </div>
+      <p class="intro small muted" style="margin-top:8px">משיכה מהבקר עובדת רק כשהחימום עצור. היא משלימה דקות שבהן הטלפון לא היה מחובר.</p>
+    </div>
   </section>
 
   <!-- ============ FIXED SET POINT ============ -->

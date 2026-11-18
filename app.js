@@ -13,6 +13,112 @@ const RECONNECT_DELAYS_MS = [1000, 2000, 4000];
 const $ = id => document.getElementById(id);
 const { LIMITS, roundHalf, clamp, toTenths } = Core;
 
+/* ======================= test log ======================= */
+
+// Every log line from the board (once a second) plus every command and reply, kept in the phone
+// and saved in its storage, so a reload does not lose it. Downloaded as a CSV file.
+const LOG_KEY = 'heaterLog.v1';
+const LOG_MAX = 40000;                       // about 11 hours at one line a second
+const LOG_FIELDS = [
+  ['t', 'board_s'], ['r', 'raw_C'], ['lo', 'raw_min_C'], ['hi', 'raw_max_C'], ['f', 'smoothed_C'],
+  ['g', 'target_C'], ['a', 'approach_C'], ['p', 'predicted_C'], ['s', 'rise_C_per_s'],
+  ['d', 'duty_pct'], ['i', 'hold_pct'], ['on', 'heater_on_ms'], ['vf', 'vbat_heater_off'],
+  ['vn', 'vbat_heater_on'], ['lg', 'loop_pause_ms'], ['R', 'running'], ['F', 'fault'], ['X', 'sim'],
+];
+const TLOG = { rows: [], dirty: false, dump: null };
+try { const saved = JSON.parse(localStorage.getItem(LOG_KEY) || '[]'); if (Array.isArray(saved)) TLOG.rows = saved; } catch (e) { /* no storage */ }
+
+function logRow(row) {
+  TLOG.rows.push(row);
+  if (TLOG.rows.length > LOG_MAX) TLOG.rows.splice(0, TLOG.rows.length - LOG_MAX);
+  TLOG.dirty = true;
+}
+function logEvent(text) { logRow({ w: Date.now(), e: text }); }
+function saveLog() {
+  if (!TLOG.dirty) return;
+  TLOG.dirty = false;
+  try { localStorage.setItem(LOG_KEY, JSON.stringify(TLOG.rows)); } catch (e) { /* storage full: keep in memory */ }
+}
+setInterval(() => { saveLog(); renderLogInfo(); }, 5000);
+window.addEventListener('pagehide', saveLog);
+
+function onLogLine(m) {
+  if (m.type === 'L') { logRow({ w: Date.now(), k: m.kv }); return; }
+  if (m.type === 'LH') { TLOG.dump = { wall: Date.now(), now: m.now, n: 0, expected: m.count }; logEvent(`board memory: ${m.count} records`); return; }
+  if (m.type === 'H') {
+    const d = TLOG.dump; if (!d) return;
+    const t = parseFloat(m.kv.t);
+    logRow({ w: d.wall - (d.now - t) * 1000, k: m.kv, h: 1 });
+    d.n++; return;
+  }
+  if (m.type === 'LE') {
+    const d = TLOG.dump; TLOG.dump = null;
+    logEvent(`board memory: received ${d ? d.n : 0} records`);
+    toast(`נמשכו ${d ? d.n : 0} רשומות מזיכרון הבקר.`);
+    saveLog(); renderLogInfo();
+  }
+}
+
+function pad2(n) { return String(n).padStart(2, '0'); }
+function wallText(ms) {
+  const d = new Date(ms);
+  return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())} ${pad2(d.getHours())}:${pad2(d.getMinutes())}:${pad2(d.getSeconds())}`;
+}
+function logCsv() {
+  const head = ['phone_time', 'source', ...LOG_FIELDS.map(f => f[1]), 'event'];
+  const rows = TLOG.rows.slice().sort((a, b) => a.w - b.w);
+  const out = [head.join(',')];
+  for (const r of rows) {
+    if (r.k) out.push([wallText(r.w), r.h ? 'board-memory' : 'live', ...LOG_FIELDS.map(f => r.k[f[0]] ?? ''), ''].join(','));
+    else out.push([wallText(r.w), 'app', ...LOG_FIELDS.map(() => ''), `"${String(r.e).replace(/"/g, "'")}"`].join(','));
+  }
+  return out.join('\r\n') + '\r\n';
+}
+
+async function exportLog() {
+  saveLog();
+  const d = new Date();
+  const name = `heater-log-${d.getFullYear()}${pad2(d.getMonth() + 1)}${pad2(d.getDate())}-${pad2(d.getHours())}${pad2(d.getMinutes())}.csv`;
+  const blob = new Blob([logCsv()], { type: 'text/csv' });
+  try {
+    const file = new File([blob], name, { type: 'text/csv' });
+    if (navigator.canShare && navigator.canShare({ files: [file] })) {
+      await navigator.share({ files: [file], title: name });
+      return;
+    }
+  } catch (e) { if (e && e.name === 'AbortError') return; /* otherwise fall back to a download */ }
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = name; document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 10000);
+  toast(`הקובץ ${name} נשמר בתיקיית ההורדות.`);
+}
+
+async function pullBoardLog() {
+  try { await busy(() => command('LOG')); toast('מושך את 30 הדקות האחרונות מהבקר…'); }
+  catch (e) { toast(`לא נמשך: ${reasonText(e)}.`); }
+}
+
+function clearLog() {
+  if (!confirm('למחוק את כל היומן מהטלפון?')) return;
+  TLOG.rows = []; TLOG.dirty = true; saveLog(); renderLogInfo();
+}
+
+function renderLogInfo() {
+  const el = $('logInfo'); if (!el) return;
+  const data = TLOG.rows.filter(r => r.k);
+  if (!data.length) { el.textContent = 'עדיין אין רשומות. היומן מתמלא לבד בזמן שהבקר מחובר (בקושחה 1.4 ומעלה).'; }
+  else {
+    let first = Infinity, last = -Infinity;
+    for (const r of data) { if (r.w < first) first = r.w; if (r.w > last) last = r.w; }
+    const min = Math.round((last - first) / 60000);
+    el.textContent = `${data.length} רשומות, בערך ${min} דקות, החל מ-${wallText(first).slice(11, 16)}.`;
+  }
+  $('logExport').disabled = !TLOG.rows.length;
+  $('logClear').disabled = !TLOG.rows.length;
+  $('logPull').disabled = !S.connected || S.busy;
+}
+
 /* ======================= state ======================= */
 
 const S = {
@@ -107,7 +213,9 @@ function attempt(cmd, prefix, tries) {
       ok: () => { clearTimeout(timer); waiter = null; resolve(); },
       fail: r => { clearTimeout(timer); waiter = null; reject(new CmdError(prefix, r)); },
     };
-    log(`→ ${prefix === 'AU' || prefix === 'MX' || prefix === 'PW' ? prefix + ':••••' : cmd}`);
+    const shown = prefix === 'AU' || prefix === 'MX' || prefix === 'PW' ? prefix + ':****' : cmd;
+    log(`→ ${shown}`);
+    logEvent(`app sent ${shown}`);
     S.transport.write(cmd).catch(() => { if (waiter) waiter.fail('SEND'); });
   });
 }
@@ -135,6 +243,8 @@ function log(text) {
 function onLine(line) {
   log(`← ${line}`);
   const m = Core.parseLine(line);
+  if (m.type === 'L' || m.type === 'H' || m.type === 'LH' || m.type === 'LE') { onLogLine(m); return; }
+  if (m.type === 'OK' || m.type === 'ER' || m.type === 'C') logEvent(`board said ${line}`);
   if (m.type === 'OK' || m.type === 'ER') {
     if (waiter && waiter.cmd === m.cmd) m.type === 'OK' ? waiter.ok() : waiter.fail(m.reason);
     return;
@@ -194,6 +304,7 @@ function attachTransport(t) {
 
 async function afterConnect() {
   S.connected = true;
+  logEvent(`connected to ${S.transport ? S.transport.name : 'board'}`);
   setChip('connected', 'מחובר');
   renderAll();
   try { await command('GET'); } catch (e) { /* status lines will still arrive */ }
@@ -239,6 +350,7 @@ async function disconnectQuiet() {
 
 async function onDisconnected(byUser) {
   if (!S.connected && !S.transport) return;
+  logEvent(byUser || S.userDisconnect ? 'disconnected by the user' : 'connection lost');
   S.connected = false;
   if (waiter) waiter.fail('NOTCONN');
   lockSettings();
@@ -296,6 +408,7 @@ function renderAll() {
   renderFixed();
   renderProfile();
   renderSettings();
+  renderLogInfo();
   drawChart();
 }
 
@@ -743,6 +856,9 @@ $('connectBig').addEventListener('click', connectBle);
 $('demoBtn').addEventListener('click', connectDemo);
 $('runBtn').addEventListener('click', toggleRun);
 $('faultRetry').addEventListener('click', retryAfterFault);
+$('logExport').addEventListener('click', exportLog);
+$('logPull').addEventListener('click', pullBoardLog);
+$('logClear').addEventListener('click', clearLog);
 
 $('winSeg').addEventListener('click', e => {
   const b = e.target.closest('button');

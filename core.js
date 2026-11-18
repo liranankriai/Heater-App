@@ -5,11 +5,14 @@
      S;T:41.3;G:42.0;D:41;R:1;M:P;I:0;L:60;F:0;B:3.87;X:1   status (every 5 s)
      C;MX:50.0;SP:42.0;MD:F;N:2;HX:50.0                       saved configuration
      P;I:0;T:40.0;M:30                                        one saved profile step
+     L;t:12;r:45.12;lo:..;hi:..;f:..;g:43.0;a:..;p:..;s:0.012;d:12;i:5;on:120;vf:3.95;vn:3.80;lg:10;R:1;F:0;X:0
+                    test log, once a second (firmware 1.4+); H;... = the same, sent from memory on LOG,
+                    between LH;N:<count>;NOW:<board seconds> and LE
      OK:SP          command accepted
      ER:SP:RANGE    command refused, with a reason
 
    App -> board commands (one at a time; each gets OK or ER)
-     GET  SP:<t10>  MD:F|P  PB:<n>  PS:<i>:<t10>:<min>  PE  RUN:0|1
+     GET  SP:<t10>  MD:F|P  PB:<n>  PS:<i>:<t10>:<min>  PE  RUN:0|1  LOG
      AU:<pwd>  MX:<t10>:<pwd>  PW:<old>:<new>
    Temperatures in commands are tenths of a degree: 425 = 42.5 °C.
 */
@@ -63,6 +66,9 @@
     if (type === 'P') {
       return { type: 'P', index: num(kv.I), temp: num(kv.T), minutes: num(kv.M) };
     }
+    if (type === 'L' || type === 'H') return { type, kv };
+    if (type === 'LH') return { type, count: num(kv.N) || 0, now: num(kv.NOW) || 0 };
+    if (type === 'LE') return { type };
     return { type: 'UNKNOWN', raw: line };
   }
 
@@ -121,6 +127,7 @@
     NOBEGIN: 'העלאת הפרופיל לא התחילה כראוי',
     FAULT: 'התקלה עדיין קיימת. חכו שהמכשיר יתקרר',
     TIMEOUT: 'הבקר לא ענה',
+    RUNNING: 'קודם עצרו את החימום',
   };
 
   const api = {

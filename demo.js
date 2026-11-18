@@ -39,6 +39,13 @@
   DemoDevice.prototype.connect = async function () {
     this.timers.push(setInterval(() => this.tick(), 250));
     this.timers.push(setInterval(() => this.status(), 5000));
+    this.timers.push(setInterval(() => this.logLine('L'), 1000));
+    this.logStart = Date.now();
+  };
+  // test-log line like firmware 1.4 (demo values)
+  DemoDevice.prototype.logLine = function (kind) {
+    const T = this.temp.toFixed(2), sec = Math.round((Date.now() - this.logStart) / 1000);
+    this.emit(`${kind};t:${sec};r:${T};lo:${T};hi:${T};f:${T};g:${f10(this.target10())};a:${T};p:${T};s:0.000;d:${Math.round(this.duty * 100)};i:${Math.round(this.integ * 100)};on:${Math.round(this.duty * 1000)};vf:3.95;vn:3.80;lg:0;R:${this.running ? 1 : 0};F:${this.fault};X:1`);
   };
   DemoDevice.prototype.disconnect = async function () {
     this.timers.forEach(clearInterval); this.timers = [];
@@ -133,6 +140,9 @@
         if (!pwdOk(f[1])) return er('PWD');
         if (!/^[0-9]{4,8}$/.test(f[2] || '')) return er('FORMAT');
         c.pwd = f[2]; this.save(); return ok();
+      case 'LOG':
+        if (this.running && !this.fault) return er('RUNNING');
+        ok(); this.emit(`LH;N:0;NOW:${Math.round((Date.now() - this.logStart) / 1000)}`); return this.emit('LE');
       default: this.emit('ER:CMD:UNKNOWN');
     }
   };
