@@ -43,7 +43,12 @@ setInterval(() => { saveLog(); renderLogInfo(); }, 5000);
 window.addEventListener('pagehide', saveLog);
 
 function onLogLine(m) {
-  if (m.type === 'L') { logRow({ w: Date.now(), k: m.kv }); return; }
+  if (m.type === 'L') {
+    logRow({ w: Date.now(), k: m.kv });
+    const vf = parseFloat(m.kv.vf);                // battery measured with the heater off (firmware 1.4+)
+    if (vf > 2.5) noteBattery(vf, true);
+    return;
+  }
   if (m.type === 'LH') { TLOG.dump = { wall: Date.now(), now: m.now, n: 0, expected: m.count }; logEvent(`board memory: ${m.count} records`); return; }
   if (m.type === 'H') {
     const d = TLOG.dump; if (!d) return;
@@ -254,8 +259,24 @@ function onLine(line) {
   else if (m.type === 'P') applyProfileStep(m);
 }
 
+/* Battery: smoothed voltage -> %. The once-a-second log value measured with the heater off is
+   preferred (no dip from the heater current); the status value is used for older firmware. */
+const BAT = { v: null, fromLog: 0 };
+function noteBattery(v, fromLog) {
+  if (fromLog) BAT.fromLog = Date.now();
+  else if (Date.now() - BAT.fromLog < 10000) return;   // log values are arriving: ignore the status value
+  BAT.v = BAT.v == null ? v : BAT.v + 0.1 * (v - BAT.v);
+}
+function batteryText(withVolts) {
+  if (BAT.v == null) return '';
+  const pct = Core.batteryPercent(BAT.v);
+  const shown = Math.round(pct / 5) * 5;           // steps of 5 % so it does not flicker
+  return withVolts ? `\u2066${shown}%\u2069 (\u2066${BAT.v.toFixed(2)}V\u2069)` : `\u2066${shown}%\u2069`;
+}
+
 function applyStatus(s) {
   S.status = s;
+  if (typeof s.battery === 'number') noteBattery(s.battery, false);
   if (typeof s.temp === 'number') {
     const now = Date.now();
     S.history.push({ t: now, temp: s.temp, target: s.target });
@@ -304,6 +325,7 @@ function attachTransport(t) {
 
 async function afterConnect() {
   S.connected = true;
+  BAT.v = null; BAT.fromLog = 0;
   logEvent(`connected to ${S.transport ? S.transport.name : 'board'}`);
   setChip('connected', 'מחובר');
   renderAll();
@@ -447,7 +469,11 @@ function renderMonitor() {
     tag.textContent = md === 'P' ? 'פרופיל טמפרטורה' : 'טמפרטורה קבועה';
     tag.classList.toggle('profile', md === 'P');
   }
-  $('batLine').textContent = live && typeof s.battery === 'number' ? `סוללה ${s.battery.toFixed(2)}V` : '';
+  const batEl = $('batLine');
+  batEl.textContent = live && BAT.v != null ? `סוללה ${batteryText(true)}` : '';
+  const low = live && BAT.v != null && Core.batteryPercent(BAT.v) <= 15;
+  batEl.classList.toggle('lowbat', low);
+  if (low) batEl.textContent += ' · כדאי לטעון';
   $('dutyFill').style.width = live ? `${clamp(s.duty, 0, 100)}%` : '0';
   $('dutyText').textContent = live ? `עוצמת חימום ${Math.round(s.duty)}%` : 'עוצמת חימום —';
   $('runLine').textContent = !live ? '' : s.fault ? 'נעצר בגלל תקלה' : s.running ? 'החימום פועל' : 'החימום עצור';
@@ -498,7 +524,7 @@ function renderSettings() {
   $('infoName').textContent = S.connected ? S.transport.name : '—';
   $('infoMax').textContent = S.config ? deg(S.config.max) : '—';
   $('infoHard').textContent = S.config ? deg(S.config.hardMax) : '—';
-  $('infoBat').textContent = S.status && typeof S.status.battery === 'number' ? `${S.status.battery.toFixed(2)}V` : '—';
+  $('infoBat').textContent = BAT.v != null ? batteryText(true) : '—';
 }
 
 /* ======================= profile editor ======================= */

@@ -106,6 +106,7 @@ h2{font-size:20px;margin:2px 0 0;}
 }
 .card h3{font-size:15px;margin:0 0 10px;}
 .muted{color:var(--fg-muted);}
+.lowbat{color:var(--danger);font-weight:600;}
 .small{font-size:13px;}
 .msg{font-size:14px;min-height:1.3em;line-height:1.45;}
 .msg.ok{color:var(--ok);}
@@ -433,7 +434,8 @@ input[type="range"]{width:100%;accent-color:var(--accent);margin:14px 0 2px;dire
       <div class="kv"><span>שם</span><b id="infoName">—</b></div>
       <div class="kv"><span>מקסימום שמור</span><b id="infoMax">—</b></div>
       <div class="kv"><span>גבול קשיח בקוד הבקר</span><b id="infoHard">—</b></div>
-      <div class="kv"><span>מתח סוללה</span><b id="infoBat">—</b></div>
+      <div class="kv"><span>סוללה</span><b id="infoBat">—</b></div>
+      <p class="intro small muted" style="margin-top:6px">האחוז מחושב לפי מתח הסוללה ולכן הוא הערכה. בזמן טעינה ב-USB הוא מראה יותר מהמצב האמיתי.</p>
     </div>
     <button class="btn secondary" id="installBtn" hidden>התקן כאפליקציה במסך הבית</button>
   </section>

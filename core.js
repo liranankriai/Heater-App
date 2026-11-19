@@ -72,6 +72,23 @@
     return { type: 'UNKNOWN', raw: line };
   }
 
+  // Battery charge (%) from the resting voltage of a single LiPo cell (typical curve).
+  // Only an estimate: under load the voltage dips, and while charging it reads high.
+  const LIPO_CURVE = [
+    [3.30, 0], [3.61, 5], [3.69, 10], [3.71, 15], [3.73, 20], [3.75, 25], [3.77, 30], [3.79, 35],
+    [3.80, 40], [3.82, 45], [3.84, 50], [3.85, 55], [3.87, 60], [3.91, 65], [3.95, 70], [3.98, 75],
+    [4.02, 80], [4.08, 85], [4.11, 90], [4.15, 95], [4.20, 100],
+  ];
+  function batteryPercent(v) {
+    if (!(v > 0)) return undefined;
+    if (v <= LIPO_CURVE[0][0]) return 0;
+    for (let i = 1; i < LIPO_CURVE.length; i++) {
+      const [v1, p1] = LIPO_CURVE[i], [v0, p0] = LIPO_CURVE[i - 1];
+      if (v <= v1) return Math.round(p0 + (p1 - p0) * (v - v0) / (v1 - v0));
+    }
+    return 100;
+  }
+
   const toTenths = c => Math.round(c * 10);
   const roundHalf = c => Math.round(c * 2) / 2;
   const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
@@ -131,7 +148,7 @@
   };
 
   const api = {
-    LIMITS, splitLines, parseLine, toTenths, roundHalf, clamp,
+    LIMITS, splitLines, parseLine, toTenths, roundHalf, clamp, batteryPercent,
     validateProfile, profileCommands, validPassword,
     formatDuration, formatClock, FAULTS, REASONS,
   };
